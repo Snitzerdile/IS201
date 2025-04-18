@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sprite Pong</title>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+    html, body {
+      margin: 0;
+      padding: 0;
+      font-family: Arial, sans-serif;
+      background: #0d1117;
+      color: white;
+      height: 100%;
+      width: 100%;
+    }
+    header {
+      width: 100%;
+      background: #1f2937;
+      padding: 10px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+    }
+    header h1 {
+      margin: 0;
+      font-size: 24px;
+    }
+    nav {
+      display: flex;
+      gap: 10px;
+    }
+    nav a {
+      color: white;
+      text-decoration: none;
+      background: #2563eb;
+      padding: 6px 12px;
+      border-radius: 5px;
+      font-size: 16px;
+    }
+    nav a:hover {
+      background: #1d4ed8;
+    }
+    body {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      padding: 10px;
+    }
+    canvas {
+      background: #1e2229;
+      border: 2px solid #fff;
+      width: 90vw;
+      max-width: 600px;
+      height: auto;
+    }
+    #controls {
+      margin-top: 10px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    button, input[type=range] {
+      margin: 5px;
+      padding: 10px 20px;
+      font-size: 18px;
+      border-radius: 5px;
+    }
+    button {
+      cursor: pointer;
+      background-color: #28a745;
+      border: none;
+      color: white;
+    }
+    #message {
+      font-size: 20px;
+      text-align: center;
+      margin: 10px 0;
+      width: 100%;
+    }
+    #power {
+      width: 200px;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Sprite Pong</h1>
+    <nav>
+      <a href="/index.html">Resumé</a>
+      <a href="/scratch.html">HomePage</a>
+    </nav>
+  </header>
+  <div id="message"></div>
+  <canvas id="gameCanvas" width="600" height="600"></canvas>
+  <div id="controls">
+    <label for="power">Power:</label>
+    <input type="range" id="power" min="5" max="11" step="0.1" value="8">
+    <button id="tossButton">Toss</button>
+  </div>
+
+  <script>
+    const canvas = document.getElementById("gameCanvas");
+    const ctx = canvas.getContext("2d");
+    const tossButton = document.getElementById("tossButton");
+    const powerSlider = document.getElementById("power");
+    const message = document.getElementById("message");
+
+    const ball = {
+      x: 300,
+      y: 500,
+      radius: 10,
+      angle: 0,
+      inMotion: false,
+      vx: 0,
+      vy: 0,
+      vz: 0,
+      z: 0,
+      grounded: false,
+      path: []
+    };
+
+    const splashes = [];
+    const gravity = -0.25;
+    const cups = [];
+    const cupRadius = 20;
+    let angleArrow = 0;
+    let angleDirection = 1;
+    let filledCups = 0;
+
+    function setupCups() {
+      cups.length = 0;
+      let rows = 4;
+      let index = 0;
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c <= r; c++) {
+          cups.push({
+            x: 300 - r * cupRadius + c * cupRadius * 2,
+            y: 100 + r * cupRadius * 2,
+            hit: false
+          });
+          index++;
+          if (index === 10) return;
+        }
+      }
+    }
+
+    function drawCups() {
+      cups.forEach(cup => {
+        ctx.beginPath();
+        ctx.arc(cup.x, cup.y, cupRadius, 0, Math.PI * 2);
+        ctx.fillStyle = cup.hit ? "gray" : "red";
+        ctx.fill();
+        ctx.stroke();
+      });
+    }
+
+    function drawBall() {
+      const scale = 1 + ball.z * 0.02;
+      ctx.beginPath();
+      ctx.arc(ball.x, ball.y, ball.radius * scale, 0, Math.PI * 2);
+      ctx.fillStyle = "white";
+      ctx.fill();
+      ctx.stroke();
+    }
+
+    function drawArcPath() {
+      ctx.beginPath();
+      ctx.strokeStyle = 'rgba(255,255,0,0.3)';
+      ctx.lineWidth = 2;
+      for (let i = 0; i < ball.path.length; i++) {
+        const p = ball.path[i];
+        ctx.lineTo(p.x, p.y);
+      }
+      ctx.stroke();
+    }
+
+    function drawSplashes() {
+      splashes.forEach(s => {
+        ctx.beginPath();
+        ctx.arc(s.x, s.y, 4, 0, Math.PI * 2);
+        ctx.fillStyle = 'lightblue';
+        ctx.fill();
+      });
+    }
+
+    function drawArrow() {
+      if (ball.inMotion) return;
+      ctx.save();
+      ctx.translate(ball.x, ball.y);
+      ctx.rotate(angleArrow);
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(0, -50);
+      ctx.strokeStyle = "yellow";
+      ctx.lineWidth = 3;
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    function updateArrow() {
+      if (!ball.inMotion) {
+        angleArrow += 0.02 * angleDirection;
+        if (angleArrow > Math.PI / 4 || angleArrow < -Math.PI / 4) {
+          angleDirection *= -1;
+        }
+      }
+    }
+
+    function updateBall() {
+      if (ball.inMotion) {
+        ball.x += ball.vx;
+        ball.y += ball.vy;
+        ball.vz += gravity;
+        ball.z += ball.vz;
+
+        ball.path.push({ x: ball.x, y: ball.y });
+        if (ball.path.length > 60) ball.path.shift();
+
+        if (ball.z < 0) {
+          ball.z = 0;
+          ball.grounded = true;
+
+          for (const cup of cups) {
+            if (!cup.hit) {
+              const dx = ball.x - cup.x;
+              const dy = ball.y - cup.y;
+              const dist = Math.sqrt(dx * dx + dy * dy);
+              if (dist < ball.radius + cupRadius) {
+                cup.hit = true;
+                splashes.push({ x: cup.x, y: cup.y });
+                filledCups++;
+                if (filledCups === 10) {
+                  message.innerText = "Congratulations! All cups are hit!";
+                  tossButton.innerText = "Play Again";
+                }
+                ball.inMotion = false;
+                resetBall();
+                return;
+              }
+            }
+          }
+
+          ball.inMotion = false;
+          resetBall();
+        }
+      }
+    }
+
+    function resetBall() {
+      ball.x = 300;
+      ball.y = 500;
+      ball.vx = 0;
+      ball.vy = 0;
+      ball.vz = 0;
+      ball.z = 0;
+      ball.grounded = false;
+      ball.path = [];
+    }
+
+    function draw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      drawCups();
+      drawArcPath();
+      drawBall();
+      drawArrow();
+      drawSplashes();
+    }
+
+    function gameLoop() {
+      updateArrow();
+      updateBall();
+      draw();
+      requestAnimationFrame(gameLoop);
+    }
+
+    tossButton.addEventListener("click", () => {
+      if (filledCups === 10) {
+        filledCups = 0;
+        message.innerText = "";
+        tossButton.innerText = "Toss";
+        setupCups();
+        return;
+      }
+
+      if (!ball.inMotion) {
+        const power = parseFloat(powerSlider.value);
+        ball.inMotion = true;
+        ball.vx = power * 0.5 * Math.sin(angleArrow);
+        ball.vy = -power * 0.5 * Math.cos(angleArrow);
+        ball.vz = power * 1.0;
+      }
+    });
+
+    setupCups();
+    gameLoop();
+  </script>
+</body>
+</html>
